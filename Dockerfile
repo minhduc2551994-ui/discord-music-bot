@@ -1,6 +1,6 @@
 FROM node:20-slim
 
-# Install FFmpeg, yt-dlp, and audio codecs
+# Install FFmpeg and yt-dlp
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     python3 \
@@ -13,7 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --production
+# Skip postinstall scripts (yt-dlp is installed system-wide above)
+RUN npm ci --production --ignore-scripts
 
 COPY . .
 
