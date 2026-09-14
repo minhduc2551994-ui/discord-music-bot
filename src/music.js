@@ -1,15 +1,5 @@
+const { spawn } = require('node:child_process');
 const { EventEmitter } = require('node:events');
-const https = require('node:https');
-const http = require('node:http');
-
-// Invidious public instances (YouTube proxy - no bot detection!)
-const INVIDIOUS_INSTANCES = [
-    'https://vid.puffyan.us',
-    'https://invidious.fdn.fr',
-    'https://inv.nadeko.net',
-    'https://invidious.nerdvpn.de',
-    'https://invidious.jing.rocks',
-];
 
 class MusicQueue extends EventEmitter {
     constructor() {
@@ -44,110 +34,79 @@ class MusicQueue extends EventEmitter {
     }
 }
 
-// HTTP fetch helper
-function fetchJSON(url, timeout = 10000) {
+// Run yt-dlp with proper args
+function runYtDlp(args, timeout = 30000) {
     return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('Timeout')), timeout);
-        const mod = url.startsWith('https') ? https : http;
-        
-        mod.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
-            if (res.statusCode === 301 || res.statusCode === 302) {
-                clearTimeout(timer);
-                return fetchJSON(res.headers.location, timeout).then(resolve).catch(reject);
+        const proc = spawn('yt-dlp', args, { timeout });
+        let stdout = '';
+        let stderr = '';
+
+        proc.stdout.on('data', (d) => (stdout += d));
+        proc.stderr.on('data', (d) => (stderr += d));
+
+        proc.on('close', (code) => {
+            // yt-dlp can return warnings in stderr but still succeed
+            if (stdout.trim()) {
+                resolve(stdout.trim());
+            } else if (code !== 0) {
+                // Get the actual ERROR line, skip WARNINGs
+                const errorLines = stderr.split('\n').filter(l => l.includes('ERROR'));
+                const errMsg = errorLines.length ? errorLines[0].slice(0, 300) : stderr.slice(0, 300);
+                reject(new Error(errMsg));
+            } else {
+                reject(new Error('Không có kết quả'));
             }
-            let data = '';
-            res.on('data', (chunk) => data += chunk);
-            res.on('end', () => {
-                clearTimeout(timer);
-                try { resolve(JSON.parse(data)); }
-                catch { reject(new Error('Invalid JSON')); }
-            });
-            res.on('error', (e) => { clearTimeout(timer); reject(e); });
-        }).on('error', (e) => { clearTimeout(timer); reject(e); });
+        });
+
+        proc.on('error', (e) => reject(new Error(`yt-dlp not found: ${e.message}`)));
     });
 }
 
-// Try each Invidious instance until one works
-async function tryInvidious(path) {
-    for (const instance of INVIDIOUS_INSTANCES) {
-        try {
-            const result = await fetchJSON(`${instance}${path}`, 8000);
-            if (result && !result.error) return { data: result, instance };
-        } catch {}
-    }
-    throw new Error('Tất cả Invidious instances đều không khả dụng');
-}
+// Common yt-dlp args for YouTube
+const YT_ARGS = [
+    '--geo-bypass',
+    '--force-ipv4',
+    '--no-check-certificates',
+    '--extractor-args', 'youtube:player_client=web_music,android',
+    '--user-agent', 'com.google.android.youtube/19.29.37 (Linux; U; Android 11) gzip',
+];
 
-// Search YouTube via Invidious
+// Search YouTube using yt-dlp
 async function searchYouTube(query, limit = 1) {
     const isURL = query.startsWith('http://') || query.startsWith('https://');
+    const args = isURL
+        ? ['--dump-json', '--no-playlist', ...YT_ARGS, query]
+        : ['--dump-json', '--default-search', 'ytsearch' + limit, '--no-playlist', ...YT_ARGS, query];
+
+    const stdout = await runYtDlp(args);
     
-    if (isURL) {
-        // Extract video ID from URL
-        const videoId = extractVideoId(query);
-        if (!videoId) throw new Error('URL YouTube không hợp lệ');
-        
-        const { data, instance } = await tryInvidious(`/api/v1/videos/${videoId}?fields=title,videoId,lengthSeconds,videoThumbnails,author`);
-        return [{
-            title: data.title || 'Unknown',
-            url: `https://www.youtube.com/watch?v=${data.videoId}`,
-            videoId: data.videoId,
-            duration: data.lengthSeconds || 0,
-            thumbnail: data.videoThumbnails?.[0]?.url || '',
-            uploader: data.author || 'Unknown',
-            instance,
-        }];
-    }
-    
-    // Search
-    const encoded = encodeURIComponent(query);
-    const { data, instance } = await tryInvidious(`/api/v1/search?q=${encoded}&type=video`);
-    
-    if (!Array.isArray(data) || !data.length) throw new Error('Không tìm thấy kết quả');
-    
-    return data.slice(0, limit).map(v => ({
-        title: v.title || 'Unknown',
-        url: `https://www.youtube.com/watch?v=${v.videoId}`,
-        videoId: v.videoId,
-        duration: v.lengthSeconds || 0,
-        thumbnail: v.videoThumbnails?.[0]?.url || '',
-        uploader: v.author || 'Unknown',
-        instance,
-    }));
+    return stdout.split('\n').filter(Boolean).map(line => {
+        const info = JSON.parse(line);
+        return {
+            title: info.title || 'Unknown',
+            url: info.webpage_url || info.url,
+            duration: info.duration || 0,
+            thumbnail: info.thumbnail || '',
+            uploader: info.uploader || info.channel || 'Unknown',
+        };
+    });
 }
 
-// Extract video ID from various YouTube URL formats
-function extractVideoId(url) {
-    const patterns = [
-        /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
-        /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+// Get audio stream URL
+async function getAudioStream(url) {
+    const args = [
+        '-f', 'bestaudio',
+        '--get-url',
+        '--no-playlist',
+        ...YT_ARGS,
+        url,
     ];
-    for (const p of patterns) {
-        const match = url.match(p);
-        if (match) return match[1];
-    }
-    return null;
+
+    return await runYtDlp(args);
 }
 
-// Get audio stream URL from Invidious
-async function getAudioStreamURL(videoId, instance) {
-    // Get video details with adaptive formats
-    const { data } = await tryInvidious(`/api/v1/videos/${videoId}`);
-    
-    // Find best audio format
-    const audioFormats = (data.adaptiveFormats || [])
-        .filter(f => f.type?.startsWith('audio/'))
-        .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-    
-    if (!audioFormats.length) throw new Error('Không tìm thấy audio stream');
-    
-    // Return the best audio URL
-    return audioFormats[0].url;
-}
-
-// Create audio stream via FFmpeg from URL
+// Create FFmpeg stream
 function createFFmpegStream(audioUrl) {
-    const { spawn } = require('node:child_process');
     const ffmpeg = spawn('ffmpeg', [
         '-reconnect', '1',
         '-reconnect_streamed', '1',
@@ -162,8 +121,8 @@ function createFFmpegStream(audioUrl) {
         'pipe:1',
     ], { stdio: ['pipe', 'pipe', 'pipe'] });
 
-    ffmpeg.stderr.on('data', () => {}); // suppress logs
+    ffmpeg.stderr.on('data', () => {});
     return ffmpeg.stdout;
 }
 
-module.exports = { MusicQueue, searchYouTube, getAudioStreamURL, createFFmpegStream };
+module.exports = { MusicQueue, searchYouTube, getAudioStream, createFFmpegStream };

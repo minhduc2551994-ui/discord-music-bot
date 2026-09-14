@@ -2,6 +2,7 @@ const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const { MusicQueue } = require('./music');
 const fs = require('node:fs');
 const path = require('node:path');
+const { execSync } = require('node:child_process');
 require('dotenv').config();
 
 const client = new Client({
@@ -34,7 +35,17 @@ for (const file of fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'))) {
 }
 
 client.login(process.env.DISCORD_TOKEN).then(() => {
-    console.log('🎵 Music Bot ready (Invidious API)');
+    // Check tools
+    try {
+        const ver = execSync('yt-dlp --version').toString().trim();
+        console.log(`🎵 yt-dlp ${ver} (nightly)`);
+    } catch { console.error('❌ yt-dlp not found!'); }
+    
+    try {
+        const dv = execSync('deno --version').toString().split('\n')[0].trim();
+        console.log(`🦕 ${dv}`);
+    } catch { console.error('❌ deno not found!'); }
+
     const http = require('node:http');
     const PORT = process.env.PORT || 3000;
     http.createServer((_, res) => { res.writeHead(200); res.end('OK'); }).listen(PORT, () => console.log(`🌐 Port ${PORT}`));

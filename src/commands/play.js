@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType } = require('@discordjs/voice');
-const { searchYouTube, getAudioStreamURL, createFFmpegStream } = require('../music');
+const { searchYouTube, getAudioStream, createFFmpegStream } = require('../music');
 
 function formatDuration(seconds) {
     if (!seconds) return '0:00';
@@ -20,10 +20,7 @@ async function playSong(queue) {
     queue.playing = true;
 
     try {
-        // Get audio URL from Invidious
-        const audioUrl = await getAudioStreamURL(song.videoId, song.instance);
-
-        // Create FFmpeg stream → opus
+        const audioUrl = await getAudioStream(song.url);
         const stream = createFFmpegStream(audioUrl);
         const resource = createAudioResource(stream, { inputType: StreamType.OggOpus });
 
@@ -43,7 +40,7 @@ async function playSong(queue) {
         });
     } catch (error) {
         console.error('Play error:', error);
-        queue.textChannel?.send(`❌ Lỗi phát **${song.title}**: ${error.message}`);
+        queue.textChannel?.send(`❌ Lỗi phát **${song.title}**: ${error.message?.slice(0, 200)}`);
         queue.songs.shift();
         if (queue.songs.length) playSong(queue);
     }
@@ -64,7 +61,7 @@ module.exports = {
 
         try {
             const results = await searchYouTube(query);
-            if (!results.length) return interaction.followUp('❌ Không tìm thấy bài nào!');
+            if (!results.length) return interaction.followUp('❌ Không tìm thấy!');
 
             const song = results[0];
             song.user = interaction.user;
@@ -88,26 +85,22 @@ module.exports = {
                 });
 
                 player.on(AudioPlayerStatus.Idle, () => {
-                    const currentSong = queue.songs[0];
+                    const cur = queue.songs[0];
                     if (queue.loopMode === 1) {
                         playSong(queue);
                     } else {
                         queue.songs.shift();
-                        if (queue.loopMode === 2 && currentSong) {
-                            queue.songs.push(currentSong);
-                        }
-                        if (queue.songs.length) {
-                            playSong(queue);
-                        } else {
-                            queue.textChannel?.send('📭 Hết bài! Bot rời voice.');
+                        if (queue.loopMode === 2 && cur) queue.songs.push(cur);
+                        if (queue.songs.length) playSong(queue);
+                        else {
+                            queue.textChannel?.send('📭 Hết bài!');
                             interaction.client.musicQueue.delete(interaction.guildId);
                         }
                     }
                 });
 
-                player.on('error', (error) => {
-                    console.error('Player error:', error);
-                    queue.textChannel?.send(`❌ Lỗi: ${error.message}`);
+                player.on('error', (err) => {
+                    console.error('Player error:', err);
                     queue.songs.shift();
                     if (queue.songs.length) playSong(queue);
                 });
@@ -117,11 +110,11 @@ module.exports = {
                 playSong(queue);
             } else {
                 queue.songs.push(song);
-                await interaction.followUp(`✅ Thêm **${song.title}** — ${formatDuration(song.duration)} (vị trí #${queue.songs.length})`);
+                await interaction.followUp(`✅ Thêm **${song.title}** — ${formatDuration(song.duration)} (#${queue.songs.length})`);
             }
         } catch (error) {
-            console.error('Play error:', error);
-            await interaction.followUp(`❌ Lỗi: ${error.message?.slice(0, 200)}`).catch(() => {});
+            console.error('Play cmd error:', error);
+            await interaction.followUp(`❌ ${error.message?.slice(0, 300)}`).catch(() => {});
         }
     },
 };
