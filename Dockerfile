@@ -1,11 +1,11 @@
-FROM node:20-slim
+FROM node:20
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
+# Install FFmpeg
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci --production
+COPY package.json ./
+RUN npm install --production
 COPY . .
 CMD ["node", "src/index.js"]

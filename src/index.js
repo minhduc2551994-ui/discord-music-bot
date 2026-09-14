@@ -1,5 +1,6 @@
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const { DisTube } = require('distube');
+const { YtDlpPlugin } = require('@distube/yt-dlp');
 const fs = require('node:fs');
 const path = require('node:path');
 require('dotenv').config();
@@ -14,11 +15,11 @@ const client = new Client({
     ],
 });
 
-// Initialize DisTube (v4 has built-in YouTube support via ytdl-core)
+// Initialize DisTube with yt-dlp (bypasses YouTube bot detection)
 const distube = new DisTube(client, {
+    plugins: [new YtDlpPlugin({ update: false })],
     emitNewSongOnly: true,
     emitAddSongWhenCreatingQueue: false,
-    nsfw: true,
 });
 
 // Prevent crashes
@@ -90,7 +91,7 @@ client.distube = distube;
 
 // Login
 client.login(process.env.DISCORD_TOKEN).then(() => {
-    console.log('🎵 DisTube v4 initialized (built-in YouTube)');
+    console.log('🎵 DisTube + yt-dlp initialized');
 
     // Health check HTTP server for Render
     const http = require('node:http');
