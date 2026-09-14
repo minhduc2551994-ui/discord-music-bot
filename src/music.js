@@ -43,7 +43,23 @@ async function searchYouTube(query, limit = 1) {
         // Use cookies if available
         const cookiesPath = '/tmp/yt-cookies.txt';
         if (process.env.YOUTUBE_COOKIES) {
-            require('node:fs').writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES);
+            const raw = process.env.YOUTUBE_COOKIES.trim();
+            let content;
+            if (raw.startsWith('#') || raw.includes('\t')) {
+                // Already Netscape format
+                content = raw;
+            } else {
+                // Raw cookie string from browser → convert to Netscape format
+                const lines = ['# Netscape HTTP Cookie File'];
+                raw.split(';').forEach(pair => {
+                    const [name, ...rest] = pair.trim().split('=');
+                    if (name && rest.length) {
+                        lines.push(`.youtube.com\tTRUE\t/\tTRUE\t${Math.floor(Date.now()/1000) + 86400*365}\t${name.trim()}\t${rest.join('=').trim()}`);
+                    }
+                });
+                content = lines.join('\n');
+            }
+            require('node:fs').writeFileSync(cookiesPath, content);
             ytArgs.push('--cookies', cookiesPath);
         }
         
@@ -99,7 +115,7 @@ async function getAudioStream(url) {
         // Use cookies if available
         if (process.env.YOUTUBE_COOKIES) {
             const cookiesPath = '/tmp/yt-cookies.txt';
-            require('node:fs').writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES);
+            // File already written by searchYouTube, just reference it
             args.push('--cookies', cookiesPath);
         }
 
