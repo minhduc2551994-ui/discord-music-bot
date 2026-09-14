@@ -25,16 +25,25 @@ module.exports = {
 
         try {
             const distube = interaction.client.distube;
-            await distube.play(channel, query, {
+            
+            // Add timeout - don't hang forever
+            const playPromise = distube.play(channel, query, {
                 member: interaction.member,
                 textChannel: interaction.channel,
                 metadata: { interaction },
             });
 
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Timeout: Không tìm được bài hát sau 15 giây')), 15000)
+            );
+
+            await Promise.race([playPromise, timeoutPromise]);
             await interaction.followUp(`🔎 Đang xử lý: **${query}**`);
         } catch (error) {
             console.error('Play error:', error);
-            await interaction.followUp(`❌ Không thể phát: ${error.message}`);
+            try {
+                await interaction.followUp(`❌ Không thể phát: ${error.message}`);
+            } catch {}
         }
     },
 };
