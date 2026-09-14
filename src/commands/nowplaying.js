@@ -1,23 +1,21 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { useQueue } = require('discord-player');
-const { createDetailedNowPlayingEmbed, createErrorEmbed } = require('../utils/embedBuilder');
-
 module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('nowplaying')
-        .setDescription('🎵 Xem bài đang phát với progress bar'),
-
+    data: new SlashCommandBuilder().setName('nowplaying').setDescription('🎵 Xem bài đang phát'),
     async execute(interaction) {
-        const queue = useQueue(interaction.guildId);
-
-        if (!queue || !queue.currentTrack) {
-            return interaction.reply({
-                embeds: [createErrorEmbed('Không có bài nào đang phát!')],
-                ephemeral: true,
-            });
-        }
-
-        const embed = createDetailedNowPlayingEmbed(queue);
-        return interaction.reply({ embeds: [embed] });
+        const queue = interaction.client.distube.getQueue(interaction.guildId);
+        if (!queue) return interaction.reply({ content: '❌ Không có bài nào đang phát!', flags: 64 });
+        const song = queue.songs[0];
+        await interaction.reply({
+            embeds: [{
+                color: 0x00ff00,
+                title: '🎵 Đang phát',
+                description: `**[${song.name}](${song.url})**`,
+                fields: [
+                    { name: '👤 Nghệ sĩ', value: song.uploader?.name || 'Unknown', inline: true },
+                    { name: '⏱️ Thời lượng', value: song.formattedDuration, inline: true },
+                ],
+                thumbnail: { url: song.thumbnail || '' },
+            }],
+        });
     },
 };

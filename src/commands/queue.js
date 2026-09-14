@@ -1,80 +1,32 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { useQueue } = require('discord-player');
-const { createQueueEmbed, createErrorEmbed } = require('../utils/embedBuilder');
-
+const { SlashCommandBuilder } = require('discord.js');
 module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('queue')
-        .setDescription('📋 Xem danh sách bài chờ')
-        .addIntegerOption((option) =>
-            option.setName('page').setDescription('Số trang').setMinValue(1)
-        ),
-
+    data: new SlashCommandBuilder().setName('queue').setDescription('📋 Xem danh sách bài hát'),
     async execute(interaction) {
-        const queue = useQueue(interaction.guildId);
+        const queue = interaction.client.distube.getQueue(interaction.guildId);
+        if (!queue) return interaction.reply({ content: '❌ Không có bài nào trong queue!', flags: 64 });
 
-        if (!queue || !queue.currentTrack) {
-            return interaction.reply({
-                embeds: [createErrorEmbed('Queue trống! Dùng `/play` để thêm nhạc.')],
-                ephemeral: true,
+        const current = queue.songs[0];
+        const upcoming = queue.songs.slice(1, 11);
+
+        let description = `🎵 **Đang phát:** [${current.name}](${current.url}) — ${current.formattedDuration}\n\n`;
+        
+        if (upcoming.length > 0) {
+            description += '**📋 Tiếp theo:**\n';
+            upcoming.forEach((song, i) => {
+                description += `\`${i + 1}.\` [${song.name}](${song.url}) — ${song.formattedDuration}\n`;
             });
         }
 
-        const page = (interaction.options.getInteger('page') || 1) - 1;
-        const { embed, totalPages } = createQueueEmbed(queue, page);
+        if (queue.songs.length > 11) {
+            description += `\n... và ${queue.songs.length - 11} bài nữa`;
+        }
 
-        // Create pagination buttons
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId(`queue_prev_${page}`)
-                .setLabel('◀️ Trước')
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(page <= 0),
-            new ButtonBuilder()
-                .setCustomId(`queue_next_${page}`)
-                .setLabel('Sau ▶️')
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(page >= totalPages - 1)
-        );
-
-        const response = await interaction.reply({
-            embeds: [embed],
-            components: totalPages > 1 ? [row] : [],
-            fetchReply: true,
+        await interaction.reply({
+            embeds: [{
+                color: 0x0099ff,
+                title: `📋 Hàng chờ — ${queue.songs.length} bài`,
+                description,
+            }],
         });
-
-        // Handle button interactions
-        if (totalPages > 1) {
-            const collector = response.createMessageComponentCollector({
-                filter: (i) => i.user.id === interaction.user.id,
-                time: 60_000,
-            });
-
-            collector.on('collect', async (i) => {
-                let newPage = page;
-                if (i.customId.startsWith('queue_prev')) newPage = Math.max(0, page - 1);
-                if (i.customId.startsWith('queue_next')) newPage = Math.min(totalPages - 1, page + 1);
-
-                const { embed: newEmbed, totalPages: newTotal } = createQueueEmbed(queue, newPage);
-                const newRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`queue_prev_${newPage}`)
-                        .setLabel('◀️ Trước')
-                        .setStyle(ButtonStyle.Secondary)
-                        .setDisabled(newPage <= 0),
-                    new ButtonBuilder()
-                        .setCustomId(`queue_next_${newPage}`)
-                        .setLabel('Sau ▶️')
-                        .setStyle(ButtonStyle.Secondary)
-                        .setDisabled(newPage >= newTotal - 1)
-                );
-
-                await i.update({ embeds: [newEmbed], components: [newRow] });
-            });
-
-            collector.on('end', () => {
-                response.edit({ components: [] }).catch(() => {});
-            });
-        }
     },
 };

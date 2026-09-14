@@ -1,26 +1,11 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { useQueue } = require('discord-player');
-const { createSuccessEmbed, createErrorEmbed } = require('../utils/embedBuilder');
-
 module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('pause')
-        .setDescription('⏸️ Tạm dừng phát nhạc'),
-
+    data: new SlashCommandBuilder().setName('pause').setDescription('⏸️ Tạm dừng bài hát'),
     async execute(interaction) {
-        const queue = useQueue(interaction.guildId);
-
-        if (!queue || !queue.isPlaying()) {
-            return interaction.reply({
-                embeds: [createErrorEmbed('Không có bài nào đang phát!')],
-                ephemeral: true,
-            });
-        }
-
-        queue.node.pause();
-
-        return interaction.reply({
-            embeds: [createSuccessEmbed(`Đã tạm dừng: **${queue.currentTrack?.cleanTitle || 'N/A'}** ⏸️`)],
-        });
+        const queue = interaction.client.distube.getQueue(interaction.guildId);
+        if (!queue) return interaction.reply({ content: '❌ Không có bài nào đang phát!', flags: 64 });
+        if (queue.paused) return interaction.reply({ content: '⏸️ Đã tạm dừng rồi!', flags: 64 });
+        queue.pause();
+        await interaction.reply('⏸️ Đã tạm dừng!');
     },
 };

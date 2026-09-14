@@ -1,11 +1,11 @@
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
-const { Player } = require('discord-player');
+const { DisTube } = require('distube');
+const { YtDlpPlugin } = require('@distube/yt-dlp');
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
 require('dotenv').config();
 
-// Set FFmpeg path from ffmpeg-static (for local dev, Docker has system ffmpeg)
+// Set FFmpeg path from ffmpeg-static (for local dev)
 try { process.env.FFMPEG_PATH = require('ffmpeg-static'); } catch {}
 
 // Create Discord client
@@ -14,16 +14,18 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
     ],
 });
 
-// Initialize discord-player
-const player = new Player(client, {
-    connectionTimeout: 30000,
-    skipFFmpeg: false,
+// Initialize DisTube with yt-dlp plugin
+const distube = new DisTube(client, {
+    plugins: [new YtDlpPlugin({ update: false })],
+    emitNewSongOnly: true,
+    emitAddSongWhenCreatingQueue: false,
 });
 
-// Prevent unhandled errors from crashing the bot
+// Prevent crashes
 client.on('error', (error) => console.error('Client error:', error));
 process.on('unhandledRejection', (error) => console.error('Unhandled rejection:', error));
 
@@ -54,58 +56,56 @@ for (const file of eventFiles) {
     }
 }
 
-// Initialize player and login
-async function main() {
-    // Load YoutubeExtractor with yt-dlp stream bridge
-    const { YoutubeExtractor } = require('discord-player-youtubei');
-    await player.extractors.register(YoutubeExtractor, {
-        streamOptions: {
-            useClient: 'IOS',
-        },
-        overrideDownloadFunction: async (url) => {
-            console.log(`[YT-DLP] Streaming: ${url}`);
-            return new Promise((resolve, reject) => {
-                const proc = spawn('yt-dlp', [
-                    '-f', 'bestaudio[ext=webm]/bestaudio',
-                    '-o', '-',
-                    '--no-playlist',
-                    '--no-warnings',
-                    url,
-                ], { stdio: ['ignore', 'pipe', 'pipe'] });
-
-                proc.stderr.on('data', (d) => console.log(`[YT-DLP] ${d.toString().trim()}`));
-                proc.on('error', (err) => {
-                    console.error('[YT-DLP] spawn error:', err.message);
-                    reject(err);
-                });
-
-                resolve(proc.stdout);
-            });
-        },
+// DisTube events
+distube
+    .on('playSong', (queue, song) => {
+        console.log(`🎵 Playing: ${song.name} [${song.formattedDuration}]`);
+        queue.textChannel?.send({
+            embeds: [{
+                color: 0x00ff00,
+                title: '🎵 Đang phát',
+                description: `**[${song.name}](${song.url})**`,
+                fields: [
+                    { name: '👤 Nghệ sĩ', value: song.uploader?.name || 'Unknown', inline: true },
+                    { name: '⏱️ Thời lượng', value: song.formattedDuration || '0:00', inline: true },
+                    { name: '🔊 Nguồn', value: song.source || 'youtube', inline: true },
+                ],
+                thumbnail: { url: song.thumbnail || '' },
+                footer: { text: `Yêu cầu bởi ${song.user?.username || 'Unknown'}` },
+            }],
+        });
+    })
+    .on('addSong', (queue, song) => {
+        queue.textChannel?.send(`✅ Đã thêm **${song.name}** — ${song.formattedDuration} vào hàng chờ`);
+    })
+    .on('finish', (queue) => {
+        queue.textChannel?.send('📭 Hết bài trong queue! Bot sẽ rời voice channel.');
+    })
+    .on('empty', (queue) => {
+        queue.textChannel?.send('👋 Voice channel trống, bot tự rời.');
+    })
+    .on('error', (channel, error) => {
+        console.error('DisTube error:', error);
+        channel?.send(`❌ Lỗi: ${error.message}`);
+    })
+    .on('disconnect', (queue) => {
+        queue.textChannel?.send('🔌 Bot đã ngắt kết nối.');
     });
 
-    // Load default extractors for Spotify, SoundCloud, etc.
-    const { DefaultExtractors } = require('@discord-player/extractor');
-    await player.extractors.loadMulti(DefaultExtractors);
+// Make distube accessible from commands
+client.distube = distube;
 
-    // Load player events
-    const playerEvents = require('./events/playerEvents');
-    playerEvents.registerEvents(player);
+// Login
+client.login(process.env.DISCORD_TOKEN).then(() => {
+    console.log('🎵 DisTube + yt-dlp initialized');
 
-    console.log('🎵 Discord Player initialized with extractors + yt-dlp');
-
-    // Login to Discord
-    await client.login(process.env.DISCORD_TOKEN);
-
-    // Health check HTTP server (required for Render free Web Service)
+    // Health check HTTP server for Render
     const http = require('node:http');
     const PORT = process.env.PORT || 3000;
     http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
-        res.end('🎵 Bot is running!');
+        res.end('Bot is running!');
     }).listen(PORT, () => {
         console.log(`🌐 Health check server on port ${PORT}`);
     });
-}
-
-main().catch(console.error);
+}).catch(console.error);
