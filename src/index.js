@@ -70,6 +70,16 @@ async function main() {
 
     // Login to Discord
     await client.login(process.env.DISCORD_TOKEN);
+
+    // Health check HTTP server (required for Render free Web Service)
+    const http = require('node:http');
+    const PORT = process.env.PORT || 3000;
+    http.createServer((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('🎵 Bot is running!');
+    }).listen(PORT, () => {
+        console.log(`🌐 Health check server on port ${PORT}`);
+    });
 }
 
 main().catch(console.error);
