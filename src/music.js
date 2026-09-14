@@ -38,7 +38,15 @@ class MusicQueue extends EventEmitter {
 async function searchYouTube(query, limit = 1) {
     return new Promise((resolve, reject) => {
         const isURL = query.startsWith('http://') || query.startsWith('https://');
-        const ytArgs = ['--geo-bypass', '--force-ipv4', '--no-check-certificates', '--extractor-args', 'youtube:player_client=tv_embedded'];
+        const ytArgs = ['--geo-bypass', '--force-ipv4', '--no-check-certificates'];
+        
+        // Use cookies if available
+        const cookiesPath = '/tmp/yt-cookies.txt';
+        if (process.env.YOUTUBE_COOKIES) {
+            require('node:fs').writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES);
+            ytArgs.push('--cookies', cookiesPath);
+        }
+        
         const args = isURL
             ? ['--dump-json', '--no-playlist', ...ytArgs, query]
             : ['--dump-json', '--default-search', 'ytsearch' + limit, '--no-playlist', ...ytArgs, query];
@@ -83,10 +91,17 @@ async function getAudioStream(url) {
             '--get-url',
             '--geo-bypass',
             '--force-ipv4',
-            '--extractor-args', 'youtube:player_client=tv_embedded',
+            '--no-check-certificates',
             '--no-playlist',
             url,
         ];
+        
+        // Use cookies if available
+        if (process.env.YOUTUBE_COOKIES) {
+            const cookiesPath = '/tmp/yt-cookies.txt';
+            require('node:fs').writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES);
+            args.push('--cookies', cookiesPath);
+        }
 
         const proc = spawn('yt-dlp', args, { timeout: 20000 });
         let stdout = '';
