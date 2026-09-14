@@ -38,7 +38,7 @@ class MusicQueue extends EventEmitter {
 async function searchYouTube(query, limit = 1) {
     return new Promise((resolve, reject) => {
         const isURL = query.startsWith('http://') || query.startsWith('https://');
-        const ytArgs = ['--geo-bypass', '--force-ipv4', '--extractor-args', 'youtube:player_client=mediaconnect'];
+        const ytArgs = ['--geo-bypass', '--force-ipv4', '--no-check-certificates', '--extractor-args', 'youtube:player_client=tv_embedded'];
         const args = isURL
             ? ['--dump-json', '--no-playlist', ...ytArgs, query]
             : ['--dump-json', '--default-search', 'ytsearch' + limit, '--no-playlist', ...ytArgs, query];
@@ -83,7 +83,7 @@ async function getAudioStream(url) {
             '--get-url',
             '--geo-bypass',
             '--force-ipv4',
-            '--extractor-args', 'youtube:player_client=mediaconnect',
+            '--extractor-args', 'youtube:player_client=tv_embedded',
             '--no-playlist',
             url,
         ];
