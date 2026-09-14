@@ -60,7 +60,11 @@ for (const file of eventFiles) {
 
 // Initialize player and login
 async function main() {
-    // Load all default extractors (YouTube, Spotify, SoundCloud, etc.)
+    // Load YoutubeExtractor (stable innertube API - works on Render foreign IP)
+    const { YoutubeExtractor } = require('discord-player-youtubei');
+    await player.extractors.register(YoutubeExtractor, {});
+
+    // Load default extractors for Spotify, SoundCloud, etc.
     const { DefaultExtractors } = require('@discord-player/extractor');
     await player.extractors.loadMulti(DefaultExtractors);
 
