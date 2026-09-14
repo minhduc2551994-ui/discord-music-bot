@@ -34,8 +34,12 @@ function registerEvents(player) {
         queue.metadata.channel.send(`❌ Lỗi hệ thống: ${error.message}`);
     });
 
-    // Debug (uncomment for troubleshooting)
-    // player.events.on('debug', (queue, message) => console.log(`[DEBUG] ${message}`));
+    // Debug logging for troubleshooting
+    player.events.on('debug', (queue, message) => console.log(`[DEBUG] ${message}`));
+    player.events.on('playerSkip', (queue, track) => {
+        console.error(`Track skipped (no stream): ${track.title} - ${track.url}`);
+        queue.metadata.channel.send(`⚠️ Không thể stream: **${track.cleanTitle || track.title}** — bỏ qua.`);
+    });
 
     console.log('🎧 Player events đã được đăng ký');
 }
