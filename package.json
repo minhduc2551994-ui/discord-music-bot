@@ -13,8 +13,7 @@
     "discord.js": "^14.16.3",
     "distube": "^4.2.2",
     "dotenv": "^16.4.5",
-    "libsodium-wrappers": "^0.8.4",
-    "sodium-native": "^4.3.2"
+    "libsodium-wrappers": "^0.8.4"
   },
   "engines": {
     "node": ">=18.0.0"
