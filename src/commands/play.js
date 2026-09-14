@@ -1,6 +1,23 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { useMainPlayer } = require('discord-player');
+const { useMainPlayer, QueryType } = require('discord-player');
 const { createTrackAddedEmbed, createErrorEmbed } = require('../utils/embedBuilder');
+
+// Clean YouTube URL - strip radio/mix params that cause errors
+function cleanYouTubeUrl(query) {
+    try {
+        const url = new URL(query);
+        if (url.hostname.includes('youtube.com') || url.hostname.includes('youtu.be')) {
+            // Remove list, start_radio, index params (Radio/Mix URLs)
+            url.searchParams.delete('list');
+            url.searchParams.delete('start_radio');
+            url.searchParams.delete('index');
+            return url.toString();
+        }
+    } catch {
+        // Not a URL, return as-is (search query)
+    }
+    return query;
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -37,11 +54,15 @@ module.exports = {
         if (!channel) {
             return interaction.reply({
                 embeds: [createErrorEmbed('Bạn cần vào voice channel trước!')],
-                ephemeral: true,
+                flags: 64, // ephemeral
             });
         }
 
-        const query = interaction.options.getString('query', true);
+        let query = interaction.options.getString('query', true);
+        
+        // Clean YouTube Radio/Mix URLs
+        query = cleanYouTubeUrl(query);
+        
         await interaction.deferReply();
 
         try {
@@ -53,11 +74,13 @@ module.exports = {
                         requestedBy: interaction.user,
                     },
                     selfDeaf: true,
-                    volume: 80,
+                    volume: 100,
                     leaveOnEmpty: true,
                     leaveOnEmptyCooldown: 30000,
                     leaveOnEnd: true,
                     leaveOnEndCooldown: 30000,
+                    bufferingTimeout: 15000,
+                    skipOnNoStream: true,
                 },
                 requestedBy: interaction.user,
                 connectionOptions: {

@@ -16,14 +16,20 @@ const client = new Client({
     ],
 });
 
-// Initialize discord-player with voice connection options
+// Initialize discord-player with high quality audio
 const player = new Player(client, {
     ytdlOptions: {
         quality: 'highestaudio',
         highWaterMark: 1 << 25,
+        dlChunkSize: 0, // disable chunking for better quality
     },
-    connectionTimeout: 30000, // 30 seconds timeout for voice connection
+    connectionTimeout: 30000,
+    skipFFmpeg: false,
 });
+
+// Prevent unhandled errors from crashing the bot
+client.on('error', (error) => console.error('Client error:', error));
+process.on('unhandledRejection', (error) => console.error('Unhandled rejection:', error));
 
 // Load commands
 client.commands = new Collection();
