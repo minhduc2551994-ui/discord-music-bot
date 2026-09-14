@@ -39,8 +39,8 @@ async function searchYouTube(query, limit = 1) {
     return new Promise((resolve, reject) => {
         const isURL = query.startsWith('http://') || query.startsWith('https://');
         const args = isURL
-            ? ['--dump-json', '--no-playlist', '--geo-bypass', '--force-ipv4', '--js-runtimes', 'node', query]
-            : ['--dump-json', '--default-search', 'ytsearch' + limit, '--geo-bypass', '--force-ipv4', '--js-runtimes', 'node', '--no-playlist', query];
+            ? ['--dump-json', '--no-playlist', '--geo-bypass', '--force-ipv4', '--js-runtimes', 'node:/usr/local/bin/node', query]
+            : ['--dump-json', '--default-search', 'ytsearch' + limit, '--geo-bypass', '--force-ipv4', '--js-runtimes', 'node:/usr/local/bin/node', '--no-playlist', query];
 
         const proc = spawn('yt-dlp', args, { timeout: 20000 });
         let stdout = '';
@@ -82,7 +82,7 @@ async function getAudioStream(url) {
             '--get-url',
             '--geo-bypass',
             '--force-ipv4',
-            '--js-runtimes', 'node',
+            '--js-runtimes', 'node:/usr/local/bin/node',
             '--no-playlist',
             url,
         ];
