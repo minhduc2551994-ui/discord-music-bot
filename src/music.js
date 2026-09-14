@@ -1,5 +1,15 @@
-const { spawn } = require('node:child_process');
 const { EventEmitter } = require('node:events');
+const https = require('node:https');
+const http = require('node:http');
+
+// Invidious public instances (YouTube proxy - no bot detection!)
+const INVIDIOUS_INSTANCES = [
+    'https://vid.puffyan.us',
+    'https://invidious.fdn.fr',
+    'https://inv.nadeko.net',
+    'https://invidious.nerdvpn.de',
+    'https://invidious.jing.rocks',
+];
 
 class MusicQueue extends EventEmitter {
     constructor() {
@@ -19,7 +29,7 @@ class MusicQueue extends EventEmitter {
             player: data.player,
             textChannel: data.textChannel,
             playing: false,
-            loopMode: 0, // 0=off, 1=song, 2=queue
+            loopMode: 0,
         };
         this.guilds.set(guildId, queue);
         return queue;
@@ -34,109 +44,110 @@ class MusicQueue extends EventEmitter {
     }
 }
 
-// Search YouTube using yt-dlp
-async function searchYouTube(query, limit = 1) {
+// HTTP fetch helper
+function fetchJSON(url, timeout = 10000) {
     return new Promise((resolve, reject) => {
-        const isURL = query.startsWith('http://') || query.startsWith('https://');
-        const ytArgs = ['--geo-bypass', '--force-ipv4', '--no-check-certificates'];
+        const timer = setTimeout(() => reject(new Error('Timeout')), timeout);
+        const mod = url.startsWith('https') ? https : http;
         
-        // Use cookies if available
-        const cookiesPath = '/tmp/yt-cookies.txt';
-        if (process.env.YOUTUBE_COOKIES) {
-            const raw = process.env.YOUTUBE_COOKIES.trim();
-            let content;
-            if (raw.startsWith('#') || raw.includes('\t')) {
-                // Already Netscape format
-                content = raw;
-            } else {
-                // Raw cookie string from browser → convert to Netscape format
-                const lines = ['# Netscape HTTP Cookie File'];
-                raw.split(';').forEach(pair => {
-                    const [name, ...rest] = pair.trim().split('=');
-                    if (name && rest.length) {
-                        lines.push(`.youtube.com\tTRUE\t/\tTRUE\t${Math.floor(Date.now()/1000) + 86400*365}\t${name.trim()}\t${rest.join('=').trim()}`);
-                    }
-                });
-                content = lines.join('\n');
+        mod.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+            if (res.statusCode === 301 || res.statusCode === 302) {
+                clearTimeout(timer);
+                return fetchJSON(res.headers.location, timeout).then(resolve).catch(reject);
             }
-            require('node:fs').writeFileSync(cookiesPath, content);
-            ytArgs.push('--cookies', cookiesPath);
-        }
-        
-        const args = isURL
-            ? ['--dump-json', '--no-playlist', ...ytArgs, query]
-            : ['--dump-json', '--default-search', 'ytsearch' + limit, '--no-playlist', ...ytArgs, query];
-
-        const proc = spawn('yt-dlp', args, { timeout: 20000 });
-        let stdout = '';
-        let stderr = '';
-
-        proc.stdout.on('data', (d) => (stdout += d));
-        proc.stderr.on('data', (d) => (stderr += d));
-
-        proc.on('close', (code) => {
-            if (code !== 0) {
-                return reject(new Error(`yt-dlp error: ${stderr.slice(0, 200)}`));
-            }
-            try {
-                const results = stdout.trim().split('\n').map(line => {
-                    const info = JSON.parse(line);
-                    return {
-                        title: info.title || 'Unknown',
-                        url: info.webpage_url || info.url,
-                        duration: info.duration || 0,
-                        thumbnail: info.thumbnail || '',
-                        uploader: info.uploader || info.channel || 'Unknown',
-                    };
-                });
-                resolve(results);
-            } catch (e) {
-                reject(new Error('Không parse được kết quả'));
-            }
-        });
-
-        proc.on('error', (e) => reject(new Error(`yt-dlp not found: ${e.message}`)));
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => {
+                clearTimeout(timer);
+                try { resolve(JSON.parse(data)); }
+                catch { reject(new Error('Invalid JSON')); }
+            });
+            res.on('error', (e) => { clearTimeout(timer); reject(e); });
+        }).on('error', (e) => { clearTimeout(timer); reject(e); });
     });
 }
 
-// Get audio stream URL from yt-dlp  
-async function getAudioStream(url) {
-    return new Promise((resolve, reject) => {
-        const args = [
-            '-f', 'bestaudio[ext=webm]/bestaudio',
-            '--get-url',
-            '--geo-bypass',
-            '--force-ipv4',
-            '--no-check-certificates',
-            '--no-playlist',
-            url,
-        ];
+// Try each Invidious instance until one works
+async function tryInvidious(path) {
+    for (const instance of INVIDIOUS_INSTANCES) {
+        try {
+            const result = await fetchJSON(`${instance}${path}`, 8000);
+            if (result && !result.error) return { data: result, instance };
+        } catch {}
+    }
+    throw new Error('Tất cả Invidious instances đều không khả dụng');
+}
+
+// Search YouTube via Invidious
+async function searchYouTube(query, limit = 1) {
+    const isURL = query.startsWith('http://') || query.startsWith('https://');
+    
+    if (isURL) {
+        // Extract video ID from URL
+        const videoId = extractVideoId(query);
+        if (!videoId) throw new Error('URL YouTube không hợp lệ');
         
-        // Use cookies if available
-        if (process.env.YOUTUBE_COOKIES) {
-            const cookiesPath = '/tmp/yt-cookies.txt';
-            // File already written by searchYouTube, just reference it
-            args.push('--cookies', cookiesPath);
-        }
+        const { data, instance } = await tryInvidious(`/api/v1/videos/${videoId}?fields=title,videoId,lengthSeconds,videoThumbnails,author`);
+        return [{
+            title: data.title || 'Unknown',
+            url: `https://www.youtube.com/watch?v=${data.videoId}`,
+            videoId: data.videoId,
+            duration: data.lengthSeconds || 0,
+            thumbnail: data.videoThumbnails?.[0]?.url || '',
+            uploader: data.author || 'Unknown',
+            instance,
+        }];
+    }
+    
+    // Search
+    const encoded = encodeURIComponent(query);
+    const { data, instance } = await tryInvidious(`/api/v1/search?q=${encoded}&type=video`);
+    
+    if (!Array.isArray(data) || !data.length) throw new Error('Không tìm thấy kết quả');
+    
+    return data.slice(0, limit).map(v => ({
+        title: v.title || 'Unknown',
+        url: `https://www.youtube.com/watch?v=${v.videoId}`,
+        videoId: v.videoId,
+        duration: v.lengthSeconds || 0,
+        thumbnail: v.videoThumbnails?.[0]?.url || '',
+        uploader: v.author || 'Unknown',
+        instance,
+    }));
+}
 
-        const proc = spawn('yt-dlp', args, { timeout: 20000 });
-        let stdout = '';
-        let stderr = '';
+// Extract video ID from various YouTube URL formats
+function extractVideoId(url) {
+    const patterns = [
+        /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
+        /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+    ];
+    for (const p of patterns) {
+        const match = url.match(p);
+        if (match) return match[1];
+    }
+    return null;
+}
 
-        proc.stdout.on('data', (d) => (stdout += d));
-        proc.stderr.on('data', (d) => (stderr += d));
-
-        proc.on('close', (code) => {
-            if (code !== 0) return reject(new Error(stderr.slice(0, 200)));
-            resolve(stdout.trim().split('\n')[0]);
-        });
-
-        proc.on('error', (e) => reject(e));
-    });
+// Get audio stream URL from Invidious
+async function getAudioStreamURL(videoId, instance) {
+    // Get video details with adaptive formats
+    const { data } = await tryInvidious(`/api/v1/videos/${videoId}`);
+    
+    // Find best audio format
+    const audioFormats = (data.adaptiveFormats || [])
+        .filter(f => f.type?.startsWith('audio/'))
+        .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+    
+    if (!audioFormats.length) throw new Error('Không tìm thấy audio stream');
+    
+    // Return the best audio URL
+    return audioFormats[0].url;
 }
 
 // Create audio stream via FFmpeg from URL
 function createFFmpegStream(audioUrl) {
+    const { spawn } = require('node:child_process');
     const ffmpeg = spawn('ffmpeg', [
         '-reconnect', '1',
         '-reconnect_streamed', '1',
@@ -151,8 +162,8 @@ function createFFmpegStream(audioUrl) {
         'pipe:1',
     ], { stdio: ['pipe', 'pipe', 'pipe'] });
 
-    ffmpeg.stderr.on('data', () => {}); // suppress ffmpeg logs
+    ffmpeg.stderr.on('data', () => {}); // suppress logs
     return ffmpeg.stdout;
 }
 
-module.exports = { MusicQueue, searchYouTube, getAudioStream, createFFmpegStream };
+module.exports = { MusicQueue, searchYouTube, getAudioStreamURL, createFFmpegStream };

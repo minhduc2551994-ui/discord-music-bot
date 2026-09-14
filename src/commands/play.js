@@ -1,6 +1,13 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType } = require('@discordjs/voice');
-const { searchYouTube, getAudioStream, createFFmpegStream } = require('../music');
+const { searchYouTube, getAudioStreamURL, createFFmpegStream } = require('../music');
+
+function formatDuration(seconds) {
+    if (!seconds) return '0:00';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
 async function playSong(queue) {
     if (!queue.songs.length) {
@@ -13,8 +20,8 @@ async function playSong(queue) {
     queue.playing = true;
 
     try {
-        // Get audio URL from yt-dlp
-        const audioUrl = await getAudioStream(song.url);
+        // Get audio URL from Invidious
+        const audioUrl = await getAudioStreamURL(song.videoId, song.instance);
 
         // Create FFmpeg stream → opus
         const stream = createFFmpegStream(audioUrl);
@@ -31,22 +38,15 @@ async function playSong(queue) {
                     { name: '👤 Nghệ sĩ', value: song.uploader, inline: true },
                     { name: '⏱️ Thời lượng', value: formatDuration(song.duration), inline: true },
                 ],
-                thumbnail: { url: song.thumbnail },
+                thumbnail: song.thumbnail ? { url: song.thumbnail } : undefined,
             }],
         });
     } catch (error) {
         console.error('Play error:', error);
         queue.textChannel?.send(`❌ Lỗi phát **${song.title}**: ${error.message}`);
         queue.songs.shift();
-        playSong(queue);
+        if (queue.songs.length) playSong(queue);
     }
-}
-
-function formatDuration(seconds) {
-    if (!seconds) return '0:00';
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 module.exports = {
@@ -63,7 +63,6 @@ module.exports = {
         await interaction.deferReply();
 
         try {
-            // Search
             const results = await searchYouTube(query);
             if (!results.length) return interaction.followUp('❌ Không tìm thấy bài nào!');
 
@@ -73,7 +72,6 @@ module.exports = {
             let queue = interaction.client.musicQueue.get(interaction.guildId);
 
             if (!queue) {
-                // Join voice + create queue
                 const connection = joinVoiceChannel({
                     channelId: channel.id,
                     guildId: interaction.guildId,
@@ -89,15 +87,14 @@ module.exports = {
                     textChannel: interaction.channel,
                 });
 
-                // When song ends
                 player.on(AudioPlayerStatus.Idle, () => {
+                    const currentSong = queue.songs[0];
                     if (queue.loopMode === 1) {
-                        // Loop current song
                         playSong(queue);
                     } else {
                         queue.songs.shift();
-                        if (queue.loopMode === 2 && song) {
-                            queue.songs.push(song); // Loop queue
+                        if (queue.loopMode === 2 && currentSong) {
+                            queue.songs.push(currentSong);
                         }
                         if (queue.songs.length) {
                             playSong(queue);
@@ -110,18 +107,17 @@ module.exports = {
 
                 player.on('error', (error) => {
                     console.error('Player error:', error);
-                    queue.textChannel?.send(`❌ Lỗi player: ${error.message}`);
+                    queue.textChannel?.send(`❌ Lỗi: ${error.message}`);
                     queue.songs.shift();
                     if (queue.songs.length) playSong(queue);
                 });
 
                 queue.songs.push(song);
-                await interaction.followUp(`🔎 Đang tải: **${song.title}**`);
+                await interaction.followUp(`🔎 Đang tải: **${song.title}** — ${formatDuration(song.duration)}`);
                 playSong(queue);
             } else {
-                // Add to queue
                 queue.songs.push(song);
-                await interaction.followUp(`✅ Đã thêm **${song.title}** — ${formatDuration(song.duration)} (vị trí #${queue.songs.length})`);
+                await interaction.followUp(`✅ Thêm **${song.title}** — ${formatDuration(song.duration)} (vị trí #${queue.songs.length})`);
             }
         } catch (error) {
             console.error('Play error:', error);
