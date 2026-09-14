@@ -54,13 +54,9 @@ for (const file of eventFiles) {
 
 // Initialize player and login
 async function main() {
-    // Load YoutubeExtractor from discord-player-youtubei (stable YouTube API)
-    const { YoutubeExtractor } = require('discord-player-youtubei');
-    await player.extractors.register(YoutubeExtractor, {});
-
-    // Load remaining default extractors (Spotify, SoundCloud, etc.)
+    // Load all default extractors (YouTube, Spotify, SoundCloud, etc.)
     const { DefaultExtractors } = require('@discord-player/extractor');
-    await player.extractors.loadMulti(DefaultExtractors.filter(e => e.identifier !== 'com.discord-player.youtubeextractor'));
+    await player.extractors.loadMulti(DefaultExtractors);
 
     // Load player events
     const playerEvents = require('./events/playerEvents');
