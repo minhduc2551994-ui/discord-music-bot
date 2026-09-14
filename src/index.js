@@ -1,6 +1,6 @@
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const { DisTube } = require('distube');
-const { YtDlpPlugin } = require('@distube/yt-dlp');
+const { YtDlpPlugin } = require('@distube/ytdl-core');
 const fs = require('node:fs');
 const path = require('node:path');
 require('dotenv').config();
@@ -18,9 +18,9 @@ const client = new Client({
     ],
 });
 
-// Initialize DisTube with yt-dlp plugin
+// Initialize DisTube with ytdl-core plugin
 const distube = new DisTube(client, {
-    plugins: [new YtDlpPlugin({ update: false })],
+    plugins: [new YtDlpPlugin()],
     emitNewSongOnly: true,
     emitAddSongWhenCreatingQueue: false,
 });
