@@ -1,32 +1,18 @@
 const { SlashCommandBuilder } = require('discord.js');
 module.exports = {
-    data: new SlashCommandBuilder().setName('queue').setDescription('📋 Xem danh sách bài hát'),
+    data: new SlashCommandBuilder().setName('queue').setDescription('📋 Xem danh sách'),
     async execute(interaction) {
-        const queue = interaction.client.distube.getQueue(interaction.guildId);
-        if (!queue) return interaction.reply({ content: '❌ Không có bài nào trong queue!', flags: 64 });
-
+        const queue = interaction.client.musicQueue.get(interaction.guildId);
+        if (!queue?.songs.length) return interaction.reply({ content: '❌ Queue trống!', flags: 64 });
+        const fmt = (s) => { const m = Math.floor(s/60); return `${m}:${Math.floor(s%60).toString().padStart(2,'0')}`; };
         const current = queue.songs[0];
+        let desc = `🎵 **Đang phát:** [${current.title}](${current.url}) — ${fmt(current.duration)}\n\n`;
         const upcoming = queue.songs.slice(1, 11);
-
-        let description = `🎵 **Đang phát:** [${current.name}](${current.url}) — ${current.formattedDuration}\n\n`;
-        
-        if (upcoming.length > 0) {
-            description += '**📋 Tiếp theo:**\n';
-            upcoming.forEach((song, i) => {
-                description += `\`${i + 1}.\` [${song.name}](${song.url}) — ${song.formattedDuration}\n`;
-            });
+        if (upcoming.length) {
+            desc += '**📋 Tiếp theo:**\n';
+            upcoming.forEach((s, i) => { desc += `\`${i+1}.\` [${s.title}](${s.url}) — ${fmt(s.duration)}\n`; });
         }
-
-        if (queue.songs.length > 11) {
-            description += `\n... và ${queue.songs.length - 11} bài nữa`;
-        }
-
-        await interaction.reply({
-            embeds: [{
-                color: 0x0099ff,
-                title: `📋 Hàng chờ — ${queue.songs.length} bài`,
-                description,
-            }],
-        });
+        if (queue.songs.length > 11) desc += `\n... và ${queue.songs.length - 11} bài nữa`;
+        await interaction.reply({ embeds: [{ color: 0x0099ff, title: `📋 Queue — ${queue.songs.length} bài`, description: desc }] });
     },
 };
