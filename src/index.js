@@ -1,11 +1,12 @@
-const { Client, Collection, GatewayIntentBits, Events } = require('discord.js');
+const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const { Player } = require('discord-player');
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
 require('dotenv').config();
 
-// Set FFmpeg path from ffmpeg-static
-process.env.FFMPEG_PATH = require('ffmpeg-static');
+// Set FFmpeg path from ffmpeg-static (for local dev, Docker has system ffmpeg)
+try { process.env.FFMPEG_PATH = require('ffmpeg-static'); } catch {}
 
 // Create Discord client
 const client = new Client({
@@ -16,13 +17,8 @@ const client = new Client({
     ],
 });
 
-// Initialize discord-player with high quality audio
+// Initialize discord-player
 const player = new Player(client, {
-    ytdlOptions: {
-        quality: 'highestaudio',
-        highWaterMark: 1 << 25,
-        dlChunkSize: 0, // disable chunking for better quality
-    },
     connectionTimeout: 30000,
     skipFFmpeg: false,
 });
@@ -60,11 +56,31 @@ for (const file of eventFiles) {
 
 // Initialize player and login
 async function main() {
-    // Load YoutubeExtractor with Android client (more reliable streaming)
+    // Load YoutubeExtractor with yt-dlp stream bridge
     const { YoutubeExtractor } = require('discord-player-youtubei');
     await player.extractors.register(YoutubeExtractor, {
         streamOptions: {
-            useClient: 'ANDROID_MUSIC',
+            useClient: 'IOS',
+        },
+        overrideDownloadFunction: async (url) => {
+            console.log(`[YT-DLP] Streaming: ${url}`);
+            return new Promise((resolve, reject) => {
+                const proc = spawn('yt-dlp', [
+                    '-f', 'bestaudio[ext=webm]/bestaudio',
+                    '-o', '-',
+                    '--no-playlist',
+                    '--no-warnings',
+                    url,
+                ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+                proc.stderr.on('data', (d) => console.log(`[YT-DLP] ${d.toString().trim()}`));
+                proc.on('error', (err) => {
+                    console.error('[YT-DLP] spawn error:', err.message);
+                    reject(err);
+                });
+
+                resolve(proc.stdout);
+            });
         },
     });
 
@@ -76,7 +92,7 @@ async function main() {
     const playerEvents = require('./events/playerEvents');
     playerEvents.registerEvents(player);
 
-    console.log('🎵 Discord Player initialized with extractors');
+    console.log('🎵 Discord Player initialized with extractors + yt-dlp');
 
     // Login to Discord
     await client.login(process.env.DISCORD_TOKEN);

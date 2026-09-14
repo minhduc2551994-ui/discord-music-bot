@@ -1,11 +1,13 @@
 FROM node:20-slim
 
-# Install FFmpeg and audio codecs for high quality audio
+# Install FFmpeg, yt-dlp, and audio codecs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    libopus-dev \
     python3 \
-    build-essential \
+    curl \
+    ca-certificates \
+    && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+    && chmod a+rx /usr/local/bin/yt-dlp \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
