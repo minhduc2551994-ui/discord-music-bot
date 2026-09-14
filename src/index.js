@@ -1,12 +1,8 @@
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const { DisTube } = require('distube');
-const { YtDlpPlugin } = require('@distube/yt-dlp');
 const fs = require('node:fs');
 const path = require('node:path');
 require('dotenv').config();
-
-// Set FFmpeg path from ffmpeg-static (for local dev)
-try { process.env.FFMPEG_PATH = require('ffmpeg-static'); } catch {}
 
 // Create Discord client
 const client = new Client({
@@ -18,11 +14,11 @@ const client = new Client({
     ],
 });
 
-// Initialize DisTube with yt-dlp plugin for YouTube
+// Initialize DisTube (v4 has built-in YouTube support via ytdl-core)
 const distube = new DisTube(client, {
-    plugins: [new YtDlpPlugin({ update: false })],
     emitNewSongOnly: true,
     emitAddSongWhenCreatingQueue: false,
+    nsfw: true,
 });
 
 // Prevent crashes
@@ -86,10 +82,7 @@ distube
     })
     .on('error', (channel, error) => {
         console.error('DisTube error:', error);
-        channel?.send(`❌ Lỗi: ${error.message}`);
-    })
-    .on('disconnect', (queue) => {
-        queue.textChannel?.send('🔌 Bot đã ngắt kết nối.');
+        if (channel) channel.send(`❌ Lỗi: ${error.message}`);
     });
 
 // Make distube accessible from commands
@@ -97,7 +90,7 @@ client.distube = distube;
 
 // Login
 client.login(process.env.DISCORD_TOKEN).then(() => {
-    console.log('🎵 DisTube + yt-dlp initialized');
+    console.log('🎵 DisTube v4 initialized (built-in YouTube)');
 
     // Health check HTTP server for Render
     const http = require('node:http');

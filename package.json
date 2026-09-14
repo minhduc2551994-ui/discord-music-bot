@@ -1,21 +1,18 @@
 {
   "name": "discord-music-bot",
   "version": "1.0.0",
-  "description": "🎵 Discord Music Bot - Phát nhạc từ YouTube, Spotify, SoundCloud",
+  "description": "Discord Music Bot",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
     "deploy-commands": "node deploy-commands.js"
   },
   "dependencies": {
     "@discordjs/voice": "^0.19.2",
-    "@distube/yt-dlp": "^2.0.0",
     "@distube/ytdl-core": "^4.16.12",
     "discord.js": "^14.16.3",
-    "distube": "^5.2.3",
+    "distube": "^4.2.2",
     "dotenv": "^16.4.5",
-    "ffmpeg-static": "^5.2.0",
     "libsodium-wrappers": "^0.8.4",
     "sodium-native": "^4.3.2"
   },
